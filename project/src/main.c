@@ -134,7 +134,7 @@ void OutputFrame()
 	LCD_WriteString(&lcd, MAC_ADRESSING_STR[mach.frame_control.dst_addr_mode]);
 
 	LCD_SetLocation(&lcd, 10, 2);
-	LCD_WriteString(&lcd, "SDM:");
+	LCD_WriteString(&lcd, "SAM:");
 	LCD_SetLocation(&lcd, 14, 2);
 	LCD_WriteString(&lcd, "      ");
 	LCD_SetLocation(&lcd, 14, 2);
