@@ -3,6 +3,8 @@
 #include "diag/Trace.h"
 #include "stm32f4xx_hal.h"
 #include "MRF24J40_Driver.h"
+#include "MAC_Header_Parser.h"
+#include "hd44780.h"
 
 /* ----- main() -------------------------------------------------------------*/
 
@@ -17,24 +19,32 @@
 SPI_HandleTypeDef spih;
 MRF24J40_HandleTypeDef mrf_handle;
 
-uint8_t current_channel = 0;
+uint8_t current_channel = 3;
+uint8_t start_recv = 0;
 
+LCD_PCF8574_HandleTypeDef lcd;
 int main(int argc, char* argv[])
 {
+	lcd.pcf8574.PCF_I2C_ADDRESS = 7;
+	lcd.pcf8574.PCF_I2C_TIMEOUT = 1000;
+	lcd.pcf8574.i2c.Instance = I2C1;
+	lcd.pcf8574.i2c.Init.ClockSpeed = 400000;
+	lcd.NUMBER_OF_LINES = NUMBER_OF_LINES_2;
+	lcd.type = TYPE0;
+
+	if (LCD_Init(&lcd) != LCD_OK)
+	{
+		while (1)
+			;
+	}
+
+	LCD_ClearDisplay(&lcd);
+	LCD_SetLocation(&lcd, 0, 0);
+	LCD_WriteString(&lcd, "Channel:");
+	LCD_SetLocation(&lcd, 8, 0);
+	LCD_WriteNumber(&lcd, 11 + current_channel % 16, 10);
 	/* Configure SPI handle to work with radio module */
-	mrf_handle.spi_handle.Instance = SPI1;
-	mrf_handle.spi_handle.Init.Mode = SPI_MODE_MASTER;
-	mrf_handle.spi_handle.Init.Direction = SPI_DIRECTION_2LINES;
-	mrf_handle.spi_handle.Init.DataSize = SPI_DATASIZE_8BIT;
-	mrf_handle.spi_handle.Init.CLKPolarity = SPI_POLARITY_LOW;
-	mrf_handle.spi_handle.Init.CLKPolarity = SPI_PHASE_1EDGE;
-	mrf_handle.spi_handle.Init.NSS = SPI_NSS_SOFT;
-	mrf_handle.spi_handle.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
-	mrf_handle.spi_handle.Init.FirstBit = SPI_FIRSTBIT_MSB;
-	mrf_handle.spi_handle.Init.TIMode = SPI_TIMODE_DISABLE;
-	mrf_handle.spi_handle.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-	mrf_handle.spi_handle.Init.CRCPolynomial = 10;
-	HAL_SPI_Init(&mrf_handle.spi_handle);
+	MRF24J40_CreateHandle(&mrf_handle, SPI1);
 
 	/* Configure GPIO interrupt from radio and button */
 	GPIO_InitTypeDef gpio_init;
@@ -42,6 +52,15 @@ int main(int argc, char* argv[])
 	gpio_init.Pin = GPIO_PIN_0 | GPIO_PIN_3;
 	gpio_init.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOA, &gpio_init);
+
+	__HAL_RCC_GPIOD_CLK_ENABLE()
+	;
+	gpio_init.Speed = GPIO_SPEED_FAST;
+	gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
+	gpio_init.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14;
+	gpio_init.Pull = GPIO_PULLDOWN;
+	HAL_GPIO_Init(GPIOD, &gpio_init);
+
 	/* User button EXTI priority */
 	HAL_NVIC_SetPriority(EXTI0_IRQn, 0x03, 0x00);
 	/* Radio EXTI priority */
@@ -52,34 +71,125 @@ int main(int argc, char* argv[])
 	MRF24J40_InitializeChip(&mrf_handle);
 	while (1)
 	{
-
+		if (start_recv)
+		{
+			start_recv = 0;
+			MRF24J40_ReceiveFrame(&mrf_handle);
+		}
 	}
 }
 
-void HAL_SPI_MspInit(SPI_HandleTypeDef *hspi)
+void OutputChannel()
 {
-	/* Enable SPI1 interface clock */
-	__HAL_RCC_SPI1_CLK_ENABLE()
-	;
-	/* Configure GPIO pins A4-A7 for SPI1 */
-	__HAL_RCC_GPIOA_CLK_ENABLE()
-	;
-	GPIO_InitTypeDef gpio_init;
-	gpio_init.Alternate = GPIO_AF5_SPI1;
-	gpio_init.Mode = GPIO_MODE_AF_PP;
-	gpio_init.Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
-	gpio_init.Speed = GPIO_SPEED_FREQ_MEDIUM;
-	gpio_init.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOA, &gpio_init);
-	gpio_init.Alternate = 0x0;
-	gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
-	gpio_init.Pin = GPIO_PIN_4;
-	gpio_init.Pull = GPIO_PULLUP;
-	HAL_GPIO_Init(GPIOA, &gpio_init);
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
-	/* Configure NVIC for SPI interrupts: priority and interrupt itself */
-	HAL_NVIC_SetPriority(SPI1_IRQn, 0x01, 0x00);
-	HAL_NVIC_EnableIRQ(SPI1_IRQn);
+	LCD_ClearDisplay(&lcd);
+	LCD_SetLocation(&lcd, 0, 0);
+	LCD_WriteString(&lcd, "Channel:");
+	LCD_SetLocation(&lcd, 8, 0);
+	LCD_WriteNumber(&lcd, 11 + current_channel % 16, 10);
+}
+
+void OutputFrame()
+{
+	MAC_HeaderTypeDef mach;
+	MAC_Parse_Header(&mach, mrf_handle.recieved_frame, mrf_handle.frame_length);
+	/*
+	trace_printf("Frame length: %d\n", mrf_handle.frame_length);
+	trace_printf("Frame LQI: 0x%x\n", mrf_handle.lqi);
+	trace_printf("Frame RSSI: %d dbm\n",
+			MRF24J40_RSSI_CONVERT(mrf_handle.rssi));
+	trace_printf("MAC Header data:\n");
+	trace_printf("Frame type: %s\n",
+			MAC_FRAME_TYPES_STR[mach.frame_control.frame_type]);
+	trace_printf("Security enabled: %s\n",
+			MAC_BOOL_STR[mach.frame_control.security_enabled]);
+	trace_printf("Destination addressing mode: %s\n",
+			MAC_ADRESSING_STR[mach.frame_control.dst_addr_mode]);
+	trace_printf("Source addressing mode: %s\n\n",
+			MAC_ADRESSING_STR[mach.frame_control.src_addr_mode]);
+*/
+	LCD_SetLocation(&lcd, 11, 0);
+	LCD_WriteString(&lcd, "RSSI:-");
+	LCD_SetLocation(&lcd, 17, 0);
+	LCD_WriteNumber(&lcd, MRF24J40_RSSI_CONVERT(mrf_handle.rssi), 10);
+
+	LCD_SetLocation(&lcd, 0, 1);
+	LCD_WriteString(&lcd, "FL:");
+	LCD_SetLocation(&lcd, 3, 1);
+	LCD_WriteString(&lcd, "   ");
+	LCD_SetLocation(&lcd, 3, 1);
+	LCD_WriteNumber(&lcd, mrf_handle.frame_length, 10);
+
+	LCD_SetLocation(&lcd, 10, 1);
+	LCD_WriteString(&lcd, "FT:");
+	LCD_SetLocation(&lcd, 13, 1);
+	LCD_WriteString(&lcd, "      ");
+	LCD_SetLocation(&lcd, 13, 1);
+	LCD_WriteString(&lcd, MAC_FRAME_TYPES_STR[mach.frame_control.frame_type]);
+
+	LCD_SetLocation(&lcd, 0, 2);
+	LCD_WriteString(&lcd, "DAM:");
+	LCD_SetLocation(&lcd, 4, 2);
+	LCD_WriteString(&lcd, "      ");
+	LCD_SetLocation(&lcd, 4, 2);
+	LCD_WriteString(&lcd, MAC_ADRESSING_STR[mach.frame_control.dst_addr_mode]);
+
+	LCD_SetLocation(&lcd, 10, 2);
+	LCD_WriteString(&lcd, "SDM:");
+	LCD_SetLocation(&lcd, 14, 2);
+	LCD_WriteString(&lcd, "      ");
+	LCD_SetLocation(&lcd, 14, 2);
+	LCD_WriteString(&lcd, MAC_ADRESSING_STR[mach.frame_control.src_addr_mode]);
+
+	LCD_SetLocation(&lcd, 0, 3);
+	LCD_WriteString(&lcd, "SN:");
+	LCD_WriteString(&lcd, "   ");
+	LCD_SetLocation(&lcd, 3, 3);
+	LCD_WriteNumber(&lcd, mach.sequence_number, 10);
+
+	LCD_SetLocation(&lcd, 10, 3);
+	LCD_WriteString(&lcd, "FCS:");
+	LCD_SetLocation(&lcd, 14, 3);
+	LCD_WriteString(&lcd, "    ");
+	LCD_SetLocation(&lcd, 14, 3);
+	LCD_WriteNumber(&lcd,
+			mrf_handle.recieved_frame[mrf_handle.frame_length - 2], 16);
+	LCD_WriteNumber(&lcd,
+			mrf_handle.recieved_frame[mrf_handle.frame_length - 1], 16);
+}
+
+void HAL_I2C_MspInit(I2C_HandleTypeDef *hi2c)
+{
+	GPIO_InitTypeDef GPIO_InitStruct;
+
+	if (hi2c->Instance == I2C1)
+	{
+
+		__GPIOB_CLK_ENABLE()
+		;
+
+		GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
+		GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+		GPIO_InitStruct.Pull = GPIO_PULLUP;
+		GPIO_InitStruct.Speed = GPIO_SPEED_FAST;
+		GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
+		HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+		__I2C1_CLK_ENABLE()
+		;
+	}
+}
+
+void HAL_I2C_MspDeInit(I2C_HandleTypeDef *hi2c)
+{
+	/*##-1- Reset peripherals ##################################################*/
+	__I2C1_FORCE_RESET();
+	__I2C1_RELEASE_RESET();
+
+	/*##-2- Disable peripherals and GPIO Clocks ################################*/
+	/* Configure I2C Tx as alternate function  */
+	HAL_GPIO_DeInit(GPIOB, GPIO_PIN_8);
+	/* Configure I2C Rx as alternate function  */
+	HAL_GPIO_DeInit(GPIOB, GPIO_PIN_9);
 }
 
 void SPI1_IRQHandler(void)
@@ -107,9 +217,24 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 /* MCU received something */
 void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi)
 {
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+
 	uint8_t * pRx = hspi->pRxBuffPtr - hspi->RxXferSize;
-	trace_printf("0x%x\n", *pRx);
+	if ((pRx == &mrf_handle.intstat) && (*pRx == 0x08))
+	{
+		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+		start_recv = 1;
+	}
+	else if (pRx == &mrf_handle.rssi)
+	{
+		OutputFrame();
+		mrf_handle.callback(&mrf_handle);
+		HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
+	}
+
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
 }
 
 void EXTI0_IRQHandler(void)
@@ -128,19 +253,24 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	{
 		if (MRF24J40_SetChannel(&mrf_handle,
 				((++current_channel % 0x10) + 11)) == MRF24J40_RESULT_OK)
-			trace_printf("Current channel: %d\n",
-					(current_channel % 0x10) + 11);
-
+			OutputChannel();
 	}
 	else
 	{
-		trace_printf("Received EXTI from radio\n");
+		MRF24J40_ReadShort(&mrf_handle, MRF24J40_INTSTAT, &mrf_handle.intstat);
+		HAL_NVIC_DisableIRQ(EXTI3_IRQn);
 	}
 }
 
 void HAL_SPI_ErrorCallback(SPI_HandleTypeDef * hspi)
 {
 	trace_printf("Hmm, your SPI is fucked up!\n");
+
+}
+
+void SysTick_Handler(void)
+{
+	HAL_IncTick();
 }
 
 #pragma GCC diagnostic pop

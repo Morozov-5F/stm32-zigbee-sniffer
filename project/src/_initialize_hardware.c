@@ -168,5 +168,4 @@ SystemClock_Config(void)
 
   HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
 }
-
 // ----------------------------------------------------------------------------

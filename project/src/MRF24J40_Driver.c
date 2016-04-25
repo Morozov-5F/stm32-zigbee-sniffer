@@ -8,6 +8,32 @@
 #include "MRF24J40_Driver.h"
 
 #include "diag/Trace.h"
+#include "MAC_Header_Parser.h"
+
+void MRF24J40_RecvCallback(void * handle);
+
+MRF24J40_Result MRF24J40_CreateHandle(MRF24J40_HandleTypeDef * handle,
+		SPI_TypeDef * spi_td)
+{
+	if (spi_td != SPI1 || !handle)
+		return MRF24J40_RESULT_ERR ;
+
+	handle->spi_handle.Instance = spi_td;
+	handle->spi_handle.Init.Mode = SPI_MODE_MASTER;
+	handle->spi_handle.Init.Direction = SPI_DIRECTION_2LINES;
+	handle->spi_handle.Init.DataSize = SPI_DATASIZE_8BIT;
+	handle->spi_handle.Init.CLKPolarity = SPI_POLARITY_LOW;
+	handle->spi_handle.Init.CLKPolarity = SPI_PHASE_1EDGE;
+	handle->spi_handle.Init.NSS = SPI_NSS_SOFT;
+	handle->spi_handle.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+	handle->spi_handle.Init.FirstBit = SPI_FIRSTBIT_MSB;
+	handle->spi_handle.Init.TIMode = SPI_TIMODE_DISABLE;
+	handle->spi_handle.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+	handle->spi_handle.Init.CRCPolynomial = 10;
+	HAL_SPI_Init(&handle->spi_handle);
+
+	return MRF24J40_RESULT_OK ;
+}
 
 MRF24J40_Result MRF24J40_InitializeChip(MRF24J40_HandleTypeDef * handle)
 {
@@ -30,21 +56,11 @@ MRF24J40_Result MRF24J40_InitializeChip(MRF24J40_HandleTypeDef * handle)
 	MRF24J40_WriteShort(handle, MRF24J40_INTCON, ~(0x08));
 	MRF24J40_WriteShort(handle, MRF24J40_RFCTL, 0x04);
 	MRF24J40_WriteShort(handle, MRF24J40_RFCTL, 0x00);
-	uint32_t i;
-	for (i = 0; i < 100000; ++i);
-//	MRF24J40_WriteLong(handle, MRF24J40_RFCON(0), 0x73);
 
-	/*
-	 MRF24J40_WriteShort(handle, MRF24J40_SADRL, 0x12);
-	 MRF24J40_WriteShort(handle, MRF24J40_SADRH, 0x34);
-
-	 MRF24J40_WriteShort(handle, MRF24J40_PANIDL, 0xFF);
-	 MRF24J40_WriteShort(handle, MRF24J40_PANIDH, 0xFF);
-	 uint8_t i;
-	 for (i = 0; i < 8; ++i)
-	 MRF24J40_WriteShort(handle, MRF24J40_EADR(i), 0x11);*/
+	HAL_Delay(10);
 
 	MRF24J40_WriteShort(handle, MRF24J40_RXMCR, 0x21);
+	MRF24J40_SetChannel(handle, 14);
 
 	return MRF24J40_RESULT_OK ;
 }
@@ -126,4 +142,66 @@ MRF24J40_Result MRF24J40_SetChannel(MRF24J40_HandleTypeDef * handle,
 		return MRF24J40_RESULT_ERR ;
 	}
 	return MRF24J40_RESULT_OK ;
+}
+
+MRF24J40_Result MRF24J40_ReceiveFrame(MRF24J40_HandleTypeDef * handle)
+{
+	uint8_t i;
+	handle->is_receiving = 1;
+	handle->frame_length = 0xFF;
+	handle->callback = &MRF24J40_RecvCallback;
+	MRF24J40_WriteShort(handle, MRF24J40_BBREG1, 0x04);
+	MRF24J40_ReadLong(handle, MRF24J40_RXFIFO, &handle->frame_length);
+
+	/* TODO: Remove lock */
+	while (handle->frame_length == 0xff)
+		;
+
+	for (i = 0; i < handle->frame_length; ++i)
+	{
+		if (MRF24J40_ReadLong(handle, MRF24J40_RXFIFO_DATA(i),
+				&(handle->recieved_frame[i])) != MRF24J40_RESULT_OK)
+			return MRF24J40_RESULT_ERR ;
+	}
+	MRF24J40_ReadLong(handle, MRF24J40_RXFIFO_DATA(handle->frame_length),
+			&handle->lqi);
+	MRF24J40_ReadLong(handle, MRF24J40_RXFIFO_DATA(handle->frame_length + 1),
+			&handle->rssi);
+
+	MRF24J40_WriteShort(handle, MRF24J40_BBREG1, 0x00);
+	return MRF24J40_RESULT_OK ;
+}
+
+void MRF24J40_RecvCallback(void * handle)
+{
+	MRF24J40_HandleTypeDef * mrfh = (MRF24J40_HandleTypeDef *) handle;
+	mrfh->is_receiving = 0;
+}
+
+void HAL_SPI_MspInit(SPI_HandleTypeDef *hspi)
+{
+	/* Enable SPI1 interface clock */
+	__HAL_RCC_SPI1_CLK_ENABLE()
+	;
+	/* Configure GPIO pins A4-A7 for SPI1 */
+	__HAL_RCC_GPIOA_CLK_ENABLE()
+	;
+
+	GPIO_InitTypeDef gpio_init;
+	gpio_init.Alternate = GPIO_AF5_SPI1;
+	gpio_init.Mode = GPIO_MODE_AF_PP;
+	gpio_init.Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
+	gpio_init.Speed = GPIO_SPEED_FREQ_MEDIUM;
+	gpio_init.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(GPIOA, &gpio_init);
+	gpio_init.Alternate = 0x0;
+	gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
+	gpio_init.Pin = GPIO_PIN_4;
+	gpio_init.Pull = GPIO_PULLUP;
+	HAL_GPIO_Init(GPIOA, &gpio_init);
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+
+	/* Configure NVIC for SPI interrupts: priority and interrupt itself */
+	HAL_NVIC_SetPriority(SPI1_IRQn, 0x01, 0x00);
+	HAL_NVIC_EnableIRQ(SPI1_IRQn);
 }
