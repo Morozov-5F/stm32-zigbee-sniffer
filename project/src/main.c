@@ -92,21 +92,7 @@ void OutputFrame()
 {
 	MAC_HeaderTypeDef mach;
 	MAC_Parse_Header(&mach, mrf_handle.recieved_frame, mrf_handle.frame_length);
-	/*
-	trace_printf("Frame length: %d\n", mrf_handle.frame_length);
-	trace_printf("Frame LQI: 0x%x\n", mrf_handle.lqi);
-	trace_printf("Frame RSSI: %d dbm\n",
-			MRF24J40_RSSI_CONVERT(mrf_handle.rssi));
-	trace_printf("MAC Header data:\n");
-	trace_printf("Frame type: %s\n",
-			MAC_FRAME_TYPES_STR[mach.frame_control.frame_type]);
-	trace_printf("Security enabled: %s\n",
-			MAC_BOOL_STR[mach.frame_control.security_enabled]);
-	trace_printf("Destination addressing mode: %s\n",
-			MAC_ADRESSING_STR[mach.frame_control.dst_addr_mode]);
-	trace_printf("Source addressing mode: %s\n\n",
-			MAC_ADRESSING_STR[mach.frame_control.src_addr_mode]);
-*/
+
 	LCD_SetLocation(&lcd, 11, 0);
 	LCD_WriteString(&lcd, "RSSI:-");
 	LCD_SetLocation(&lcd, 17, 0);
