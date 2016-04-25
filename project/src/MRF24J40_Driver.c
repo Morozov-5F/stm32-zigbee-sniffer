@@ -74,7 +74,7 @@ MRF24J40_Result MRF24J40_WriteShort(MRF24J40_HandleTypeDef * handle,
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
 	if (HAL_SPI_Transmit_IT(&handle->spi_handle, handle->msg, 0x02) != HAL_OK)
 	{
-		trace_printf("SPI IS FUCKED UP!\n");
+		trace_printf("SPI is not configured properly!\n");
 		return MRF24J40_RESULT_ERR ;
 	}
 	return MRF24J40_RESULT_OK ;
@@ -89,7 +89,7 @@ MRF24J40_Result MRF24J40_ReadShort(MRF24J40_HandleTypeDef * handle,
 	if (HAL_SPI_Transmit_IT(&handle->spi_handle, handle->msg, 0x01) != HAL_OK
 			|| HAL_SPI_Receive_IT(&handle->spi_handle, val, 0x01) != HAL_OK)
 	{
-		trace_printf("SPI IS FUCKED UP!\n");
+		trace_printf("SPI is not configured properly!\n");
 		return MRF24J40_RESULT_ERR ;
 	}
 	return MRF24J40_RESULT_OK ;
@@ -106,7 +106,7 @@ MRF24J40_Result MRF24J40_WriteLong(MRF24J40_HandleTypeDef * handle,
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
 	if (HAL_SPI_Transmit_IT(&handle->spi_handle, handle->msg, 0x03) != HAL_OK)
 	{
-		trace_printf("SPI IS FUCKED UP!\n");
+		trace_printf("SPI is not configured properly!\n");
 		return MRF24J40_RESULT_ERR ;
 	}
 	return MRF24J40_RESULT_OK ;
@@ -123,7 +123,7 @@ MRF24J40_Result MRF24J40_ReadLong(MRF24J40_HandleTypeDef * handle,
 	if (HAL_SPI_Transmit_IT(&handle->spi_handle, handle->msg, 0x02) != HAL_OK
 			|| HAL_SPI_Receive_IT(&handle->spi_handle, val, 0x01) != HAL_OK)
 	{
-		trace_printf("SPI IS FUCKED UP!\n");
+		trace_printf("SPI is not configured properly!\n");
 		return MRF24J40_RESULT_ERR ;
 	}
 	return MRF24J40_RESULT_OK ;
@@ -138,7 +138,7 @@ MRF24J40_Result MRF24J40_SetChannel(MRF24J40_HandleTypeDef * handle,
 			|| MRF24J40_WriteShort(handle, MRF24J40_RFCTL, 0x00))
 			!= MRF24J40_RESULT_OK)
 	{
-		trace_printf("SPI IS SUPER FUCKED UP!\n");
+		trace_printf("SPI is not configured properly!\n");
 		return MRF24J40_RESULT_ERR ;
 	}
 	return MRF24J40_RESULT_OK ;

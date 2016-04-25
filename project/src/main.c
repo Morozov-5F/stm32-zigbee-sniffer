@@ -264,7 +264,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
 void HAL_SPI_ErrorCallback(SPI_HandleTypeDef * hspi)
 {
-	trace_printf("Hmm, your SPI is fucked up!\n");
+	trace_printf("SPI is not configured properly!\n");
 
 }
 
