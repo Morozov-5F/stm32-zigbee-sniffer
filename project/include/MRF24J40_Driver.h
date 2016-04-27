@@ -18,77 +18,98 @@
 
 #include "stm32f4xx_hal.h"
 
+/** @brief Function exit status */
 typedef uint8_t MRF24J40_Result;
-#define MRF24J40_RESULT_OK		(uint8_t)(0x00)
-#define MRF24J40_RESULT_ERR		(uint8_t)(0x01)
+/** @brief Function exited without any errors */
+#define MRF24J40_RESULT_OK     (uint8_t)(0x00)
+/** @brief Function exited with error */
+#define MRF24J40_RESULT_ERR    (uint8_t)(0x01)
 
+/** @brief MRF24J40 short address type */
 typedef uint8_t MRF24J40_ShortAddr;
-#define MRF24J40_RXMCR			(MRF24J40_ShortAddr)(0x00)
-#define MRF24J40_PANIDL			(MRF24J40_ShortAddr)(0x01)
-#define MRF24J40_PANIDH			(MRF24J40_ShortAddr)(0x02)
-#define MRF24J40_SADRL			(MRF24J40_ShortAddr)(0x03)
-#define MRF24J40_SADRH			(MRF24J40_ShortAddr)(0x04)
-#define MRF24J40_EADR(N)		(MRF24J40_ShortAddr)(0x05 + (N))
-#define MRF24J40_PACON2			(MRF24J40_ShortAddr)(0x18)
-#define MRF24J40_SOFTRST		(MRF24J40_ShortAddr)(0x2A)
-#define MRF24J40_TXSTBL			(MRF24J40_ShortAddr)(0x2E)
-#define MRF24J40_INTSTAT		(MRF24J40_ShortAddr)(0x31)
-#define MRF24J40_INTCON			(MRF24J40_ShortAddr)(0x32)
-#define MRF24J40_RFCTL			(MRF24J40_ShortAddr)(0x36)
-#define MRF24J40_BBREG1			(MRF24J40_ShortAddr)(0x39)
-#define MRF24J40_BBREG2			(MRF24J40_ShortAddr)(0x3A)
-#define MRF24J40_BBREG6			(MRF24J40_ShortAddr)(0x3E)
-#define MRF24J40_CCAEDTH		(MRF24J40_ShortAddr)(0x3F)
+/** @brief MRF24J40 Recievie MAC control register */
+#define MRF24J40_RXMCR           (MRF24J40_ShortAddr)(0x00)
+/** @brief MRF24J40 power amplifier control 2 register */
+#define MRF24J40_PACON2          (MRF24J40_ShortAddr)(0x18)
+/** @brief MRF24J40 soft reset register */
+#define MRF24J40_SOFTRST         (MRF24J40_ShortAddr)(0x2A)
+/** @brief MRF24J40 transmit stabilization register */
+#define MRF24J40_TXSTBL          (MRF24J40_ShortAddr)(0x2E)
+/** @brief MRF24J40 interrupt status register */
+#define MRF24J40_INTSTAT         (MRF24J40_ShortAddr)(0x31)
+/** @brief MRF24J40 interrupt configuration register */
+#define MRF24J40_INTCON          (MRF24J40_ShortAddr)(0x32)
+/** @brief MRF24J40 RF mode control register */
+#define MRF24J40_RFCTL           (MRF24J40_ShortAddr)(0x36)
+/** @brief MRF24J40 baseband 1 register */
+#define MRF24J40_BBREG1          (MRF24J40_ShortAddr)(0x39)
+/** @brief MRF24J40 baseband 2 register */
+#define MRF24J40_BBREG2          (MRF24J40_ShortAddr)(0x3A)
+/** @brief MRF24J40 baseband 6 register */
+#define MRF24J40_BBREG6          (MRF24J40_ShortAddr)(0x3E)
+/** @brief MRF24J40 energy detection threshold for CCA register */
+#define MRF24J40_CCAEDTH         (MRF24J40_ShortAddr)(0x3F)
 
+/** @brief MRF24J40 long address type */
 typedef uint16_t MRF24J40_LongAddr;
-#define MRF24J40_RFCON(N)		(MRF24J40_LongAddr)(0x200 + (N))
-#define MRF24J40_SLPCON1		(MRF24J40_LongAddr)(0x220)
-#define MRF24J40_RXFIFO			(MRF24J40_LongAddr)(0x300)
-#define MRF24J40_RXFIFO_DATA(N) (MRF24J40_LongAddr)(0x301 + (N))
+/** @brief MRF24J40 RF control registers */
+#define MRF24J40_RFCON(N)        (MRF24J40_LongAddr)(0x200 + (N))
+/** @brief MRF24J40 sleep clock control 1 register */
+#define MRF24J40_SLPCON1         (MRF24J40_LongAddr)(0x220)
+/** @brief MRF24J40 RXFIFO start register */
+#define MRF24J40_RXFIFO          (MRF24J40_LongAddr)(0x300)
+/** @brief Forms address for RXFIFO register with number N */
+#define MRF24J40_RXFIFO_DATA(N)  (MRF24J40_LongAddr)(0x301 + (N))
 
+/** @brief Converts channel number from decimal to hex */
 #define MRF24J40_CHANNEL(CH)     (uint8_t)((((CH) - 11) & 0x0F) << 4)
 
 typedef void (*MRF24J40_Callback)(void *);
-
-#define MRF24J40_RSSI_CONVERT(VAL) (int8_t)(-(VAL)*0.22 + 90)
+/** @brief Converts hex RSSI value received from radio to dbm.
+ *
+ *  In this macro used RSSI function described in datasheet. Instead of making
+ *  big RSSI tables, RSSI value can be approximized by simple linear function.
+ */
+#define MRF24J40_RSSI_CONVERT(VAL) (uint8_t)(-(VAL)*0.22 + 90)
 
 /**
- * MRF24J40 handle to operate with this radio module. It has HAL SPI handle
+ * @brief MRF24J40 handle to operate with this radio module. It has HAL SPI handle
  * and various parameters of received frame.
  */
 typedef struct MRF24J40_HandleDef
 {
-	/** HAL SPI handle in order to use SPI easily */
-	SPI_HandleTypeDef spi_handle;
-	MRF24J40_Callback callback;
-	/** Frame, that was received */
-	uint8_t recieved_frame[128];
-	/** Request that was sent to device */
-	uint8_t msg[3];
-	/** Received frame length */
-	uint8_t frame_length;
-	/** Flag, that shows if MCU is busy reading RXFIFO */
-	uint8_t is_receiving;
-	/** Received interrupt bitmask */
-	uint8_t intstat;
-	/** Link quality indicator of received frame */
-	uint8_t lqi;
-	/** RSSI of received frame */
-	uint8_t rssi;
+  /** @brief HAL SPI handle in order to use SPI easily */
+  SPI_HandleTypeDef spi_handle;
+  /** @brief Internal callback */
+  MRF24J40_Callback callback;
+  /** @brief Frame, that was received */
+  uint8_t recieved_frame[128];
+  /** @brief Request that was sent to device */
+  uint8_t msg[3];
+  /** @brief Received frame length */
+  uint8_t frame_length;
+  /** @brief Flag, that shows if MCU is busy reading RXFIFO */
+  uint8_t is_receiving;
+  /** @brief Received interrupt bitmask */
+  uint8_t intstat;
+  /** @brief Link quality indicator of received frame */
+  uint8_t lqi;
+  /** @brief RSSI of received frame */
+  uint8_t rssi;
 } MRF24J40_HandleTypeDef;
 
 /**
- * Creates MRF24J40 handle and sets up SPI hardware
+ * @brief Creates MRF24J40 handle and sets up SPI hardware
  *
  * @param handle - pointer to the MRF24J40 handle
  * @param spi_td - pointer to the SPI typedef, specified in stm32f407x.h
  * @return error code
  */
 MRF24J40_Result MRF24J40_CreateHandle(MRF24J40_HandleTypeDef * handle,
-		SPI_TypeDef * spi_td);
+    SPI_TypeDef * spi_td);
 
 /**
- * Sending initialization sequence to MRF24J40 device as described in data sheet.
+ * @brief Sending initialization sequence to MRF24J40 device as described in data sheet.
  *
  * This function configures MRF24J40 to receive in promiscuous mode (for
  * additional information, please refer to the device data sheet).
@@ -99,7 +120,7 @@ MRF24J40_Result MRF24J40_CreateHandle(MRF24J40_HandleTypeDef * handle,
 MRF24J40_Result MRF24J40_InitializeChip(MRF24J40_HandleTypeDef * handle);
 
 /**
- * Sends sequence to specified MRF24J40 device, allowing to write value to
+ * @brief Sends sequence to specified MRF24J40 device, allowing to write value to
  * device's short address memory (addresses from 0x00 to 0x3F) at given
  * address.
  *
@@ -112,10 +133,10 @@ MRF24J40_Result MRF24J40_InitializeChip(MRF24J40_HandleTypeDef * handle);
  * @return error code
  */
 MRF24J40_Result MRF24J40_WriteShort(MRF24J40_HandleTypeDef * handle,
-		MRF24J40_ShortAddr addr, uint8_t val);
+    MRF24J40_ShortAddr addr, uint8_t val);
 
 /**
- * Sends sequence to specified MRF24J40 device, allowing to read value of
+ * @brief Sends sequence to specified MRF24J40 device, allowing to read value of
  * device's short address memory (addresses from 0x0 to 0x3F) from given
  * address.
  *
@@ -128,9 +149,9 @@ MRF24J40_Result MRF24J40_WriteShort(MRF24J40_HandleTypeDef * handle,
  * @return error code
  */
 MRF24J40_Result MRF24J40_ReadShort(MRF24J40_HandleTypeDef * handle,
-		MRF24J40_ShortAddr addr, uint8_t * val);
+    MRF24J40_ShortAddr addr, uint8_t * val);
 /**
- * Sends sequence to specified MRF24J40 device, allowing to write value to
+ * @brief Sends sequence to specified MRF24J40 device, allowing to write value to
  * device's long address memory (addresses from 0x220 to 0x38F) at given
  * address.
  *
@@ -143,10 +164,10 @@ MRF24J40_Result MRF24J40_ReadShort(MRF24J40_HandleTypeDef * handle,
  * @return error code
  */
 MRF24J40_Result MRF24J40_WriteLong(MRF24J40_HandleTypeDef * handle,
-		MRF24J40_LongAddr addr, uint8_t val);
+    MRF24J40_LongAddr addr, uint8_t val);
 
 /**
- * Sends sequence to specified MRF24J40 device, allowing to read value of
+ * @brief Sends sequence to specified MRF24J40 device, allowing to read value of
  * device's long address memory (addresses from 0x220 to 0x38F) from given
  * address.
  *
@@ -159,10 +180,10 @@ MRF24J40_Result MRF24J40_WriteLong(MRF24J40_HandleTypeDef * handle,
  * @return error code
  */
 MRF24J40_Result MRF24J40_ReadLong(MRF24J40_HandleTypeDef * handle,
-		MRF24J40_LongAddr addr, uint8_t * val);
+    MRF24J40_LongAddr addr, uint8_t * val);
 
 /**
- * Sends sequence to specified MRF24J40 device, allowing to change device's
+ * @brief Sends sequence to specified MRF24J40 device, allowing to change device's
  * channel.
  *
  * @param handle - pointer to the MRF24J40
@@ -170,9 +191,9 @@ MRF24J40_Result MRF24J40_ReadLong(MRF24J40_HandleTypeDef * handle,
  * @return error code
  */
 MRF24J40_Result MRF24J40_SetChannel(MRF24J40_HandleTypeDef * handle,
-		uint8_t channel);
+    uint8_t channel);
 /**
- * Reads frame data from MRF24J40 RXFIFO register and stores it at given
+ * @brief Reads frame data from MRF24J40 RXFIFO register and stores it at given
  * handle's received_frame field.
  *
  * This function is non-blocking and requires properly configured

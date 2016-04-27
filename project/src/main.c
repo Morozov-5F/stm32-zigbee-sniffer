@@ -16,15 +16,15 @@
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
 /* Global variables */
-SPI_HandleTypeDef spih;
 MRF24J40_HandleTypeDef mrf_handle;
-
-uint8_t current_channel = 3;
+uint8_t current_channel = 0;
+/* Trigger fo reception start */
 uint8_t start_recv = 0;
 
 LCD_PCF8574_HandleTypeDef lcd;
 int main(int argc, char* argv[])
 {
+	/* Some display configuraton */
 	lcd.pcf8574.PCF_I2C_ADDRESS = 7;
 	lcd.pcf8574.PCF_I2C_TIMEOUT = 1000;
 	lcd.pcf8574.i2c.Instance = I2C1;
@@ -32,18 +32,9 @@ int main(int argc, char* argv[])
 	lcd.NUMBER_OF_LINES = NUMBER_OF_LINES_2;
 	lcd.type = TYPE0;
 
-	if (LCD_Init(&lcd) != LCD_OK)
-	{
-		while (1)
-			;
-	}
+	OutputChannel();
 
-	LCD_ClearDisplay(&lcd);
-	LCD_SetLocation(&lcd, 0, 0);
-	LCD_WriteString(&lcd, "Channel:");
-	LCD_SetLocation(&lcd, 8, 0);
-	LCD_WriteNumber(&lcd, 11 + current_channel % 16, 10);
-	/* Configure SPI handle to work with radio module */
+	/* Configure MRF handle to work with radio modul */
 	MRF24J40_CreateHandle(&mrf_handle, SPI1);
 
 	/* Configure GPIO interrupt from radio and button */
@@ -69,8 +60,11 @@ int main(int argc, char* argv[])
 	HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
 	MRF24J40_InitializeChip(&mrf_handle);
+
 	while (1)
 	{
+		/* Triggers a reception sequence. If I call it from interrupt a deadlock
+		 * occures because SPI busy flag is not flushed(?) */
 		if (start_recv)
 		{
 			start_recv = 0;
@@ -90,6 +84,7 @@ void OutputChannel()
 
 void OutputFrame()
 {
+	/* Just output a MAC Header info to display */
 	MAC_HeaderTypeDef mach;
 	MAC_Parse_Header(&mach, mrf_handle.recieved_frame, mrf_handle.frame_length);
 
@@ -145,6 +140,7 @@ void OutputFrame()
 
 void HAL_I2C_MspInit(I2C_HandleTypeDef *hi2c)
 {
+	/* Initializing I2C interface GPIO */
 	GPIO_InitTypeDef GPIO_InitStruct;
 
 	if (hi2c->Instance == I2C1)
@@ -185,6 +181,8 @@ void SPI1_IRQHandler(void)
 
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
+	/* Handle transmission interrupts. Here we set CS pin to high when we sent
+	 * write command to radio */
 	uint8_t write_seq, *pTx = (hspi->pTxBuffPtr - hspi->TxXferSize);
 	/* Long address case */
 	if (*pTx & 0x80)
@@ -207,6 +205,8 @@ void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi)
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
 
 	uint8_t * pRx = hspi->pRxBuffPtr - hspi->RxXferSize;
+	/* Have to handle what was received manually: we figure out wether it was
+   * interrupt field of RSSI field */
 	if ((pRx == &mrf_handle.intstat) && (*pRx == 0x08))
 	{
 		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
@@ -214,6 +214,7 @@ void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi)
 	}
 	else if (pRx == &mrf_handle.rssi)
 	{
+		/* than means that reception is over */
 		OutputFrame();
 		mrf_handle.callback(&mrf_handle);
 		HAL_NVIC_EnableIRQ(EXTI3_IRQn);
@@ -239,10 +240,15 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	{
 		if (MRF24J40_SetChannel(&mrf_handle,
 				((++current_channel % 0x10) + 11)) == MRF24J40_RESULT_OK)
+			/* That fixes hang bug presented in #3 - we should enable interrupt from
+			 * radio even if we havent completed a receive sequence */
+			HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 			OutputChannel();
 	}
 	else
 	{
+		/* After reading an interrupt status we shoul disable radio interrupts
+		 * for a while */
 		MRF24J40_ReadShort(&mrf_handle, MRF24J40_INTSTAT, &mrf_handle.intstat);
 		HAL_NVIC_DisableIRQ(EXTI3_IRQn);
 	}
