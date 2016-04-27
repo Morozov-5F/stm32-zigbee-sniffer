@@ -7,6 +7,17 @@ sniffing purposes and I have no guaranties that it will work in other conditions
 and data sheets are included in this repo. Why? I really don't know, I thought it would be simplier for me, but, actually,
 it's not. Really sorry for all that HAL drivers included.
 
+**Note:** You can find project documentation in [docs folder](https://github.com/Morozov-5F/stm32-zigbee-sniffer/tree/master/docs) of this repository
+
+### Pinout 
+Pinout for STM32F4:
+
+![STM32F4 Pinout](http://i.imgur.com/ZF8dYKp.png)
+
+Pinout for MRF24J40 can be found in [OLIMEX Data Sheet](https://github.com/Morozov-5F/stm32-zigbee-sniffer/blob/master/docs/MRF24J40_user_manual.pdf).
+
+Full data sheet for project can be found [here](https://github.com/Morozov-5F/stm32-zigbee-sniffer/blob/master/docs/stm32-zigbee-sniffer.pdf)
+
 ### Indication 
 
 Sniffer itself uses kind of "standart-issue" chineese LCD display, based on HD44780. I used library from 
@@ -20,9 +31,9 @@ But via serial port more info can be uploaded to PC or other device (this is imp
 
 | Acronym        | Defenition                                        |
 | -------------- | ------------------------------------------------- |
-| 'FL'           | Frame Length                                      |
-| 'FT'           | Frame Type                                        |
-| 'DAM' or 'SAM' | Address Mode, Destination or Source, respectively |
-| 'SN'           | Sequence number                                   |
-| 'FCS'          | Frame Control Sequence                            |
-| 'RSSI'         | Received Signal Strength Indicator                |
+|  FL            | Frame Length                                      |
+|  FT            | Frame Type                                        |
+|  DAM  or  SAM  | Address Mode, Destination or Source, respectively |
+|  SN            | Sequence number                                   |
+|  FCS           | Frame Control Sequence                            |
+|  RSSI          | Received Signal Strength Indicator                |
