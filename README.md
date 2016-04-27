@@ -3,7 +3,9 @@
 A ZigBee sniffer based on STM32F4Discovery board and OLIMEX MOD-MRF24J40 radio module
 
 In this repo you can find a ibrary to work with MRF24J40 module. This library is designed only for 
-sniffing purposes and I have no guaranties that it will work in other conditions. 
+sniffing purposes and I have no guaranties that it will work in other conditions. Also Full stack of HAL drivers
+and data sheets are included in this repo. Why? I really don't know, I thought it would be simplier for me, but, actually,
+it's not. Really sorry for all that HAL drivers included.
 
 ### Indication 
 
