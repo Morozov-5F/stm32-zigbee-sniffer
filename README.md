@@ -4,7 +4,7 @@ A ZigBee sniffer based on STM32F4Discovery board and OLIMEX MOD-MRF24J40 radio m
 
 In this repo you can find a library to work with MRF24J40 module. This library is designed only for sniffing purposes and I have no guaranties that it will work in other conditions.
 
-**Note:** You can documentation in [docs folder](https://github.com/Morozov-5F/stm32-zigbee-sniffer/tree/master/docs) of this repository
+**Note:** You can find documentation in [docs folder](https://github.com/Morozov-5F/stm32-zigbee-sniffer/tree/master/docs) of this repository
 
 ### Indication
 
